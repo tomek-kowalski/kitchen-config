@@ -27,7 +27,28 @@ export type PanelType =
   | "shelf"
   | "divider"
   | "back-panel"
-  | "plinth";
+  | "plinth"
+  | "door"
+  | "drawer-front"
+  | "drawer-side"
+  | "drawer-back"
+  | "drawer-bottom";
+
+/**
+ * How a moving part travels in the preview. Parts sharing a `groupId` move together.
+ * - `hinge`: rotation about a vertical axis through `pivot` (x, z); `direction` is the sign of the
+ *   rotation about +Y that opens the door outwards.
+ * - `slide`: translation along +Z (out of the cabinet front) by `distance`.
+ */
+export type PartMotion =
+  | {
+      readonly kind: "hinge";
+      readonly groupId: string;
+      readonly pivot: Vector3Mm;
+      readonly direction: 1 | -1;
+      readonly maxAngleDeg: number;
+    }
+  | { readonly kind: "slide"; readonly groupId: string; readonly distance: Millimeters };
 
 export interface PanelPart {
   /** Stable identifier, identical across rebuilds of the same part. */
@@ -40,4 +61,10 @@ export interface PanelPart {
   readonly dimensions: PartDimensions;
   /** Position of the part's minimum corner (its lower-left-back corner). */
   readonly position: Vector3Mm;
+  /** Set on parts generated for a door or drawer attachment. */
+  readonly attachmentId?: string;
+  /** The compartment an attachment part belongs to. */
+  readonly compartmentId?: string;
+  /** Present on parts that move in the open/close preview. */
+  readonly motion?: PartMotion;
 }

@@ -1,8 +1,25 @@
 import { create } from "zustand";
 import {
+  addDoor,
+  addDrawers,
+  getAttachmentsAffectedBySplitRemoval,
+  removeAttachment,
+  setDrawerFrontHeight,
+  removeSplitWithAttachments,
+  updateDoor,
+  updateDrawers,
+  type AttachmentOperationResult,
+} from "@/domain/attachments/operations";
+import type {
+  AttachmentId,
+  DoorConfiguration,
+  DoorLayout,
+  DrawerConfiguration,
+  DrawerPlacement,
+} from "@/domain/attachments/types";
+import {
   getCompartment,
   getCompartmentPath,
-  removeSplit,
   splitCompartment,
   updateSplitRatio,
   type CompartmentOperationResult,
@@ -23,7 +40,7 @@ export interface PendingInput {
 }
 
 /** Where the most recent rejected (non-text-field) edit came from, so the UI can show it in place. */
-export type RejectionSource = "structure" | "backPanel" | "plinth";
+export type RejectionSource = "structure" | "backPanel" | "plinth" | "attachments";
 
 export interface Rejection {
   readonly source: RejectionSource;
@@ -49,7 +66,18 @@ export interface ConfiguratorState {
   setBackPanelEnabled: (enabled: boolean) => CommitResult;
   setPlinthEnabled: (enabled: boolean) => CommitResult;
   splitCompartment: (id: CompartmentId, direction: SplitDirection) => CommitResult;
-  removeSplit: (id: CompartmentId) => CommitResult;
+  /**
+   * Removes a subdivision. If doors or drawers sit in the removed compartments, the call is refused
+   * unless `removeAttachments` is set, in which case they are removed in the same commit.
+   */
+  removeSplit: (id: CompartmentId, options?: { readonly removeAttachments?: boolean }) => CommitResult;
+  addDoor: (compartmentId: CompartmentId, layout: DoorLayout) => CommitResult;
+  addDrawers: (compartmentId: CompartmentId, placement?: DrawerPlacement) => CommitResult;
+  updateDoor: (id: AttachmentId, patch: Partial<DoorConfiguration>) => CommitResult;
+  updateDrawers: (id: AttachmentId, patch: Partial<DrawerConfiguration>) => CommitResult;
+  removeAttachment: (id: AttachmentId) => CommitResult;
+  /** Sets one drawer front (0-based, from the bottom) to an exact height; the others share the rest proportionally. */
+  setDrawerFrontHeight: (id: AttachmentId, index: number, height: number) => CommitResult;
   setSplitRatio: (id: CompartmentId, ratio: number) => CommitResult;
   selectCompartment: (id: CompartmentId | null) => void;
   /** Atomically replaces the whole configuration (e.g. after a successful import). */
@@ -103,6 +131,24 @@ export const useConfiguratorStore = create<ConfiguratorState>()((set, get) => {
     return OK;
   };
 
+  const commitAttachments = (
+    result: AttachmentOperationResult,
+    source: RejectionSource | null = "attachments",
+  ): CommitResult => {
+    if (!result.ok) {
+      const error: CabinetValidationError = {
+        field: "attachments",
+        code: "invalid_attachment",
+        message: result.error.message,
+        compartmentId: result.error.compartmentId,
+        attachmentId: result.error.attachmentId,
+      };
+      if (source) set({ rejection: { source, errors: [error] } });
+      return { ok: false, errors: [error] };
+    }
+    return commit(result.configuration, source);
+  };
+
   const commitTree = (result: CompartmentOperationResult): CommitResult => {
     if (!result.ok) {
       const error: CabinetValidationError = {
@@ -154,7 +200,34 @@ export const useConfiguratorStore = create<ConfiguratorState>()((set, get) => {
     splitCompartment: (id, direction) =>
       commitTree(splitCompartment(get().configuration.compartments, id, direction)),
 
-    removeSplit: (id) => commitTree(removeSplit(get().configuration.compartments, id)),
+    removeSplit: (id, { removeAttachments = false } = {}) => {
+      const { configuration } = get();
+      const affected = getAttachmentsAffectedBySplitRemoval(configuration, id);
+      if (affected.length > 0 && !removeAttachments) {
+        const error: CabinetValidationError = {
+          field: "attachments",
+          code: "removal_requires_confirmation",
+          message: `Usunięcie podziału usunęłoby drzwi lub szuflady (${affected.length}); wymagane potwierdzenie.`,
+          compartmentId: id,
+        };
+        return { ok: false, errors: [error] };
+      }
+      return commitAttachments(removeSplitWithAttachments(configuration, id), "structure");
+    },
+
+    addDoor: (compartmentId, layout) => commitAttachments(addDoor(get().configuration, compartmentId, layout)),
+
+    addDrawers: (compartmentId, placement) => commitAttachments(addDrawers(get().configuration, compartmentId, placement)),
+
+    // Edits report errors to the caller only, so the UI can show them next to the edited control.
+    updateDoor: (id, patch) => commitAttachments(updateDoor(get().configuration, id, patch), null),
+
+    updateDrawers: (id, patch) => commitAttachments(updateDrawers(get().configuration, id, patch), null),
+
+    removeAttachment: (id) => commitAttachments(removeAttachment(get().configuration, id)),
+
+    setDrawerFrontHeight: (id, index, height) =>
+      commitAttachments(setDrawerFrontHeight(get().configuration, id, index, height), null),
 
     setSplitRatio: (id, ratio) => commitTree(updateSplitRatio(get().configuration.compartments, id, ratio)),
 

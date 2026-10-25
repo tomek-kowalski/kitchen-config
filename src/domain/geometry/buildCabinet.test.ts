@@ -6,6 +6,9 @@ import type { CompartmentNode } from "../compartments/types";
 import { buildCabinet, CABINET_PANEL_IDS, dividerPartId, shelfPartId } from "./buildCabinet";
 import type { PanelPart, PanelType } from "./types";
 
+/** Front finishes (schema v4); the tests below that predate them only vary the other slots. */
+const FRONTS = { doorFront: "natural-oak", drawerFront: "natural-oak" } as const;
+
 function build(overrides: Partial<CabinetConfiguration> = {}): PanelPart[] {
   return buildCabinet({ ...DEFAULT_CABINET, ...overrides });
 }
@@ -180,7 +183,7 @@ describe("buildCabinet", () => {
 
   it("preserves the selected body material ID on every carcass panel", () => {
     const panels = build({
-      materials: { body: "walnut", interior: "white-matte", backPanel: "anthracite", plinth: "black-matte" },
+      materials: { ...FRONTS, body: "walnut", interior: "white-matte", backPanel: "anthracite", plinth: "black-matte" },
     });
     expect(panels.map((p) => p.materialId)).toEqual(["walnut", "walnut", "walnut", "walnut"]);
   });
@@ -188,7 +191,7 @@ describe("buildCabinet", () => {
   it("keeps body panels independent of the interior, back panel and plinth finishes", () => {
     const base = build({ materials: { ...DEFAULT_CABINET.materials, body: "cashmere" } });
     const changed = build({
-      materials: { body: "cashmere", interior: "black-matte", backPanel: "walnut", plinth: "anthracite" },
+      materials: { ...FRONTS, body: "cashmere", interior: "black-matte", backPanel: "walnut", plinth: "anthracite" },
     });
     expect(changed).toEqual(base);
   });
@@ -292,7 +295,7 @@ describe("buildCabinet — interior structure", () => {
       compartments: SHELF_THEN_DIVIDER,
       backPanel: { enabled: true, thickness: 8 },
       plinth: { enabled: true, height: 80, setback: 30 },
-      materials: { body: "white-matte", interior: "walnut", backPanel: "light-grey", plinth: "black-matte" },
+      materials: { ...FRONTS, body: "white-matte", interior: "walnut", backPanel: "light-grey", plinth: "black-matte" },
     });
     const slots = Object.fromEntries(panels.map((p) => [p.type, [p.materialSlot, p.materialId]]));
     expect(slots).toEqual({

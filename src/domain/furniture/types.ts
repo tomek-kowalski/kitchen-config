@@ -1,3 +1,4 @@
+import type { FurnitureAttachment } from "../attachments/types";
 import type { CompartmentNode } from "../compartments/types";
 import type { FurnitureMaterials } from "./materials";
 
@@ -35,6 +36,8 @@ export interface CabinetConfiguration extends CabinetDimensions {
   readonly plinth: PlinthOptions;
   /** Root of the subdivision tree; it represents the whole cabinet interior. */
   readonly compartments: CompartmentNode;
+  /** Doors and drawers mounted in leaf compartments, in insertion order. */
+  readonly attachments: readonly FurnitureAttachment[];
 }
 
 /** Every numeric value a user can type, addressed by a stable path. */

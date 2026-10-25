@@ -41,9 +41,12 @@ export function getMaterial(id: MaterialId): Material {
 }
 
 /** Groups of parts that share one finish selection. */
-export const MATERIAL_SLOTS = ["body", "interior", "backPanel", "plinth"] as const;
+export const MATERIAL_SLOTS = ["body", "interior", "backPanel", "plinth", "doorFront", "drawerFront"] as const;
 
 export type MaterialSlot = (typeof MATERIAL_SLOTS)[number];
 
-/** Finish selection per slot: body = sides/top/bottom, interior = shelves/dividers. */
+/**
+ * Finish selection per slot: body = sides/top/bottom, interior = shelves, dividers and drawer boxes,
+ * doorFront / drawerFront = the visible fronts.
+ */
 export type FurnitureMaterials = Readonly<Record<MaterialSlot, MaterialId>>;

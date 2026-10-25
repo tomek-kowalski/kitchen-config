@@ -4,6 +4,7 @@ import { OrbitControls } from "@react-three/drei";
 import { useThree, type RootState } from "@react-three/fiber";
 import { useEffect, useLayoutEffect, useMemo, useRef, type ComponentRef } from "react";
 import { PerspectiveCamera, type Box3, type Vector3 } from "three";
+import { getFrontProjection } from "@/domain/attachments/geometry";
 import { getFurnitureBounds } from "@/domain/geometry/buildCabinet";
 import { useConfiguratorStore } from "@/store/useConfiguratorStore";
 import { DEFAULT_VIEW_DIRECTION, frameBox, furnitureSceneBox, isBoxInView } from "./cameraFraming";
@@ -55,7 +56,12 @@ export function CameraRig() {
   const depth = useConfiguratorStore((state) => state.configuration.depth);
   const viewCommand = useConfiguratorStore((state) => state.viewCommand);
 
-  const box = useMemo(() => furnitureSceneBox(getFurnitureBounds({ width, height, depth })), [width, height, depth]);
+  const frontProjection = useConfiguratorStore((state) => getFrontProjection(state.configuration));
+
+  const box = useMemo(
+    () => furnitureSceneBox(getFurnitureBounds({ width, height, depth }, frontProjection), depth),
+    [width, height, depth, frontProjection],
+  );
 
   // Initial framing, before the first visible frame (refs are attached before layout effects run).
   const framedOnce = useRef(false);

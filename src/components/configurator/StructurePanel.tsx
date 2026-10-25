@@ -1,7 +1,11 @@
 "use client";
 
-import { useMemo } from "react";
-import { calculateCompartmentBounds, getSplitRatioRange } from "@/domain/compartments/layout";
+import { useMemo, useState } from "react";
+import type { CommitResult } from "@/store/useConfiguratorStore";
+import { getAttachmentsAffectedBySplitRemoval } from "@/domain/attachments/operations";
+import type { FurnitureAttachment } from "@/domain/attachments/types";
+import { calculateCompartmentBounds } from "@/domain/compartments/layout";
+import { getSplitSizeRange, ratioForFirstSize, type SplitSizeRange } from "@/domain/compartments/splitRange";
 import {
   getCompartment,
   getCompartmentPath,
@@ -18,10 +22,11 @@ import {
 } from "@/domain/compartments/types";
 import { validateCabinet } from "@/domain/constraints/validateCabinet";
 import { CONSTRUCTION_LIMITS } from "@/domain/furniture/defaults";
-import { formatMm } from "@/domain/furniture/format";
+import { formatMm, pluralPl } from "@/domain/furniture/format";
 import type { CabinetConfiguration } from "@/domain/furniture/types";
 import { useConfiguratorStore } from "@/store/useConfiguratorStore";
-import { ErrorList, SectionHeading } from "./SectionHeading";
+import { ConfirmDialog } from "./ConfirmDialog";
+import { CheckIcon, ErrorList, SectionHeading } from "./SectionHeading";
 
 interface SplitLabels {
   add: string;
@@ -42,13 +47,19 @@ const SPLIT_LABELS: Readonly<Record<SplitDirection, SplitLabels>> = {
   },
 };
 
-function compartmentLabel(id: CompartmentId, rootId: CompartmentId): string {
+export function compartmentLabel(id: CompartmentId, rootId: CompartmentId): string {
   return id === rootId ? "Całe wnętrze" : `Przedział ${id}`;
 }
 
 /** Locative form, as in "podziały w przedziale c2". */
 function compartmentLocation(id: CompartmentId, rootId: CompartmentId): string {
   return id === rootId ? "w całym wnętrzu" : `w przedziale ${id}`;
+}
+
+/** Short tree marker for a compartment's door or drawer assembly. */
+export function attachmentLabel(attachment: FurnitureAttachment): string {
+  if (attachment.type === "drawer") return `szuflady ×${attachment.configuration.count}`;
+  return attachment.configuration.layout === "double" ? "drzwi podwójne" : "drzwi";
 }
 
 /** Why a split would be rejected, or null when it is allowed. Runs the real operation + validation. */
@@ -61,13 +72,14 @@ function splitBlocker(configuration: CabinetConfiguration, id: CompartmentId, di
 
 interface TreeItemProps {
   node: CompartmentNode;
+  markers: ReadonlyMap<CompartmentId, string>;
   rootId: CompartmentId;
   layouts: ReadonlyMap<CompartmentId, CompartmentLayout>;
   selectedId: CompartmentId | null;
   onSelect: (id: CompartmentId) => void;
 }
 
-function TreeItem({ node, rootId, layouts, selectedId, onSelect }: TreeItemProps) {
+function TreeItem({ node, markers, rootId, layouts, selectedId, onSelect }: TreeItemProps) {
   const layout = layouts.get(node.id);
   const selected = node.id === selectedId;
   const size = layout ? `${formatMm(layout.bounds.dimensions.width)} × ${formatMm(layout.bounds.dimensions.height)}` : "";
@@ -79,14 +91,16 @@ function TreeItem({ node, rootId, layouts, selectedId, onSelect }: TreeItemProps
         onClick={() => onSelect(node.id)}
         aria-current={selected ? "true" : undefined}
         className={`flex w-full items-center justify-between gap-2 rounded-md px-2 py-1.5 text-left text-xs transition-colors focus-visible:outline-2 focus-visible:outline-blue-600 ${
-          selected ? "bg-blue-50 font-medium text-blue-800 ring-1 ring-blue-300" : "text-stone-700 hover:bg-stone-100"
+          selected ? "bg-blue-50 font-medium text-blue-900 ring-2 ring-blue-600" : "text-stone-700 hover:bg-stone-100"
         }`}
       >
-        <span className="truncate">
+        <span className="flex min-w-0 items-center gap-1 truncate">
+          {selected && <CheckIcon className="size-3.5 shrink-0 text-blue-600" />}
           {compartmentLabel(node.id, rootId)}
           {isBranch(node) && (
             <span className="ml-1.5 text-stone-400">· {SPLIT_LABELS[node.split.direction].panel.toLowerCase()}</span>
           )}
+          {markers.has(node.id) && <span className="ml-1.5 text-amber-700">· {markers.get(node.id)}</span>}
         </span>
         <span className="shrink-0 tabular-nums text-stone-400">{size} mm</span>
       </button>
@@ -96,6 +110,7 @@ function TreeItem({ node, rootId, layouts, selectedId, onSelect }: TreeItemProps
             <TreeItem
               key={child.id}
               node={child}
+              markers={markers}
               rootId={rootId}
               layouts={layouts}
               selectedId={selectedId}
@@ -115,6 +130,16 @@ export function StructurePanel() {
   const select = useConfiguratorStore((state) => state.selectCompartment);
   const split = useConfiguratorStore((state) => state.splitCompartment);
   const remove = useConfiguratorStore((state) => state.removeSplit);
+  const [pendingRemoval, setPendingRemoval] = useState<{
+    readonly id: CompartmentId;
+    readonly attachments: readonly FurnitureAttachment[];
+  } | null>(null);
+
+  const requestRemoval = (id: CompartmentId) => {
+    const affected = getAttachmentsAffectedBySplitRemoval(configuration, id);
+    if (affected.length === 0) remove(id);
+    else setPendingRemoval({ id, attachments: affected });
+  };
   const setRatio = useConfiguratorStore((state) => state.setSplitRatio);
 
   const tree = configuration.compartments;
@@ -123,6 +148,10 @@ export function StructurePanel() {
     [configuration],
   );
   const leafCount = useMemo(() => getLeafCompartments(tree).length, [tree]);
+  const markers = useMemo(
+    () => new Map(configuration.attachments.map((a) => [a.compartmentId, attachmentLabel(a)])),
+    [configuration.attachments],
+  );
 
   const path = selectedId ? getCompartmentPath(tree, selectedId) : null;
   const selected = path?.at(-1) ?? null;
@@ -141,7 +170,11 @@ export function StructurePanel() {
     };
   }, [configuration, selectedId]);
 
-  const ratioRange = ownerSplit ? getSplitRatioRange(configuration, ownerSplit.id) : null;
+  // Range from the complete validation (compartments, fronts, drawers, handles); validation still decides on commit.
+  const sizeRange = useMemo(
+    () => (ownerSplit ? getSplitSizeRange(configuration, ownerSplit.id) : null),
+    [configuration, ownerSplit],
+  );
 
   return (
     <section aria-labelledby="structure-heading" className="space-y-4">
@@ -153,7 +186,7 @@ export function StructurePanel() {
       </div>
 
       <ul aria-label="Przedziały" className="max-h-56 overflow-y-auto rounded-lg border border-stone-200 p-1">
-        <TreeItem node={tree} rootId={tree.id} layouts={layouts} selectedId={selectedId} onSelect={select} />
+        <TreeItem node={tree} markers={markers} rootId={tree.id} layouts={layouts} selectedId={selectedId} onSelect={select} />
       </ul>
 
       {!selected || !selectedLayout ? (
@@ -195,15 +228,43 @@ export function StructurePanel() {
               isOwnSplit={ownerSplit.id === selected.id}
               layout={ownerLayout}
               panelThickness={configuration.panelThickness}
-              ratioRange={ratioRange}
+              sizeRange={sizeRange}
               onRatio={(ratio) => setRatio(ownerSplit.id, ratio)}
-              onRemove={() => remove(ownerSplit.id)}
+              onRemove={() => requestRemoval(ownerSplit.id)}
             />
           )}
         </div>
       )}
 
       {rejection && <ErrorList errors={rejection.errors} />}
+
+      <ConfirmDialog
+        open={pendingRemoval !== null}
+        title="Usunąć podział razem z frontami?"
+        confirmLabel="Usuń podział i fronty"
+        onCancel={() => setPendingRemoval(null)}
+        onConfirm={() => {
+          if (pendingRemoval) remove(pendingRemoval.id, { removeAttachments: true });
+          setPendingRemoval(null);
+        }}
+      >
+        {pendingRemoval && (
+          <>
+            <p>
+              W usuwanych przedziałach są zamontowane {pendingRemoval.attachments.length}{" "}
+              {pluralPl(pendingRemoval.attachments.length, { one: "zestaw", few: "zestawy", many: "zestawów" })} drzwi
+              lub szuflad. Zostaną usunięte razem z podziałem:
+            </p>
+            <ul className="mt-2 list-disc space-y-0.5 pl-5">
+              {pendingRemoval.attachments.map((a) => (
+                <li key={a.id}>
+                  {attachmentLabel(a)} „{a.id}” w przedziale {a.compartmentId}
+                </li>
+              ))}
+            </ul>
+          </>
+        )}
+      </ConfirmDialog>
     </section>
   );
 }
@@ -214,12 +275,73 @@ interface SplitControlsProps {
   isOwnSplit: boolean;
   layout: CompartmentLayout;
   panelThickness: number;
-  ratioRange: { min: number; max: number } | null;
-  onRatio: (ratio: number) => void;
+  sizeRange: SplitSizeRange | null;
+  onRatio: (ratio: number) => CommitResult;
   onRemove: () => void;
 }
 
-function SplitControls({ owner, ownerLocation, isOwnSplit, layout, panelThickness, ratioRange, onRatio, onRemove }: SplitControlsProps) {
+/**
+ * Exact size of one child in mm, committed on Enter or blur. The split ratio is recalculated from it
+ * (ratio = first child / usable space), so the other child gets the rest exactly.
+ */
+function ExactSizeInput({
+  id,
+  label,
+  value,
+  onCommit,
+}: {
+  id: string;
+  label: string;
+  value: number;
+  onCommit: (size: number) => CommitResult;
+}) {
+  const shown = formatMm(value).replace(",", ".");
+  const [text, setText] = useState(shown);
+  const [synced, setSynced] = useState(shown);
+  const [errors, setErrors] = useState<readonly { message: string }[]>([]);
+  if (shown !== synced) {
+    setSynced(shown);
+    setText(shown);
+  }
+  const commit = () => {
+    const size = Number(text);
+    if (text.trim() === "" || !Number.isFinite(size)) {
+      setErrors([{ message: "Podaj wymiar w milimetrach." }]);
+      return;
+    }
+    const result = onCommit(size);
+    setErrors(result.ok ? [] : result.errors);
+  };
+  return (
+    <div className="space-y-1">
+      <label htmlFor={id} className="text-xs text-stone-600">
+        {label}
+      </label>
+      <div className="flex items-center rounded-md border border-stone-300 bg-white focus-within:ring-2 focus-within:ring-stone-200">
+        <input
+          id={id}
+          type="number"
+          inputMode="decimal"
+          step={0.1}
+          value={text}
+          onChange={(event) => setText(event.target.value)}
+          onBlur={commit}
+          onKeyDown={(event) => {
+            if (event.key === "Enter") commit();
+          }}
+          aria-invalid={errors.length > 0}
+          className="w-full min-w-0 bg-transparent px-2 py-1 text-sm tabular-nums outline-none [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none"
+        />
+        <span className="pr-2 text-xs text-stone-500" aria-hidden="true">
+          mm
+        </span>
+      </div>
+      <ErrorList errors={errors} />
+    </div>
+  );
+}
+
+function SplitControls({ owner, ownerLocation, isOwnSplit, layout, panelThickness, sizeRange, onRatio, onRemove }: SplitControlsProps) {
   const { direction, ratio } = owner.split;
   const labels = SPLIT_LABELS[direction];
   const size = direction === "horizontal" ? layout.bounds.dimensions.height : layout.bounds.dimensions.width;
@@ -239,11 +361,11 @@ function SplitControls({ owner, ownerLocation, isOwnSplit, layout, panelThicknes
       <input
         id={sliderId}
         type="range"
-        min={ratioRange ? Math.ceil(ratioRange.min * usable) : first}
-        max={ratioRange ? Math.floor(ratioRange.max * usable) : first}
+        min={sizeRange ? Math.ceil(sizeRange.min) : first}
+        max={sizeRange ? Math.floor(sizeRange.max) : first}
         step={1}
         value={Math.round(first)}
-        disabled={!ratioRange}
+        disabled={!sizeRange || Math.ceil(sizeRange.min) >= Math.floor(sizeRange.max)}
         onChange={(event) => onRatio(Number(event.target.value) / usable)}
         aria-valuetext={`${labels.parts[0]} ${formatMm(first)} mm, ${labels.parts[1]} ${formatMm(usable - first)} mm`}
         className="h-1.5 w-full cursor-pointer accent-blue-700 disabled:cursor-not-allowed"
@@ -257,6 +379,25 @@ function SplitControls({ owner, ownerLocation, isOwnSplit, layout, panelThicknes
           {labels.parts[1]}: {formatMm(usable - first)} mm
         </span>
       </p>
+      {sizeRange && (
+        <p className="text-xs tabular-nums text-stone-500">
+          Dozwolone: {labels.parts[0].toLowerCase()} {formatMm(sizeRange.min)}–{formatMm(sizeRange.max)} mm
+        </p>
+      )}
+      <div className="grid grid-cols-2 gap-2">
+        <ExactSizeInput
+          id={`${sliderId}-first`}
+          label={`${labels.parts[0]} (dokładnie)`}
+          value={first}
+          onCommit={(size) => onRatio(ratioForFirstSize({ usable }, size))}
+        />
+        <ExactSizeInput
+          id={`${sliderId}-second`}
+          label={`${labels.parts[1]} (dokładnie)`}
+          value={usable - first}
+          onCommit={(size) => onRatio(ratioForFirstSize({ usable }, usable - size))}
+        />
+      </div>
       <button
         type="button"
         onClick={onRemove}

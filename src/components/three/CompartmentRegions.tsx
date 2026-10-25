@@ -6,11 +6,10 @@ import { useEffect, useMemo, useState } from "react";
 import { calculateCompartmentBounds } from "@/domain/compartments/layout";
 import type { BoxMm, CompartmentId } from "@/domain/compartments/types";
 import { useConfiguratorStore } from "@/store/useConfiguratorStore";
+import { CLICK_TOLERANCE_PX } from "./PanelMesh";
 import { mmToM } from "./units";
 
 const HIGHLIGHT_COLOR = "#2563eb";
-/** Pixels the pointer may travel between down and up and still count as a click (not an orbit drag). */
-const CLICK_TOLERANCE_PX = 4;
 /** Regions are shrunk slightly so their faces never coincide with panel faces. */
 const INSET_MM = 1.5;
 
@@ -92,7 +91,8 @@ export function CompartmentRegions() {
       {highlight && (
         <mesh position={highlight.position} scale={highlight.scale} raycast={() => null}>
           <boxGeometry />
-          <meshBasicMaterial color={HIGHLIGHT_COLOR} transparent opacity={0.16} depthWrite={false} />
+          {/* Drawn on top so the selection stays visible behind closed doors and drawer fronts. */}
+          <meshBasicMaterial color={HIGHLIGHT_COLOR} transparent opacity={0.12} depthWrite={false} depthTest={false} />
           <Edges color={HIGHLIGHT_COLOR} />
         </mesh>
       )}

@@ -1,5 +1,6 @@
+import { buildAttachmentParts } from "../attachments/geometry";
 import { calculateCompartmentBounds, getPlinthHeight, layoutSplit } from "../compartments/layout";
-import type { BoxMm } from "../compartments/types";
+import type { BoxMm, CompartmentLayout } from "../compartments/types";
 import { assertValidCabinet } from "../constraints/validateCabinet";
 import { CABINET_LIMITS, CONSTRUCTION_LIMITS } from "../furniture/defaults";
 import type { FurnitureMaterials, MaterialId, MaterialSlot } from "../furniture/materials";
@@ -49,7 +50,10 @@ function resolvePartMaterial(materials: FurnitureMaterials, slot: MaterialSlot):
  *   and dividers start in front of it, so it never intersects them.
  * - Shelves span their compartment's width, dividers its height; both run the usable depth.
  *
- * Order: carcass, plinth, back panel, then shelves/dividers in compartment pre-order.
+ * - Doors and drawers: derived from their compartment's bounds (see attachments/layout.ts).
+ *
+ * Order: carcass, plinth, back panel, shelves/dividers in compartment pre-order, then
+ * door and drawer parts in attachment order.
  *
  * @throws InvalidCabinetConfigurationError when the configuration is invalid.
  */
@@ -110,20 +114,56 @@ export function buildCabinet(
     );
   }
 
-  for (const { id, split, bounds } of calculateCompartmentBounds(configuration)) {
+  const layouts = calculateCompartmentBounds(configuration);
+  const recessed = getInsetCoveredCompartments(configuration, layouts);
+  for (const { id, split, bounds } of layouts) {
     if (!split) continue;
     const { panel } = layoutSplit(bounds, split, t);
+    // Behind an inset door the front occupies the first t mm of the opening, so the panel stops behind it.
+    const box = recessed.has(id)
+      ? { position: panel.position, dimensions: { ...panel.dimensions, depth: panel.dimensions.depth - t } }
+      : panel;
     parts.push(
       split.direction === "horizontal"
-        ? part(shelfPartId(id), "shelf", "interior", panel)
-        : part(dividerPartId(id), "divider", "interior", panel),
+        ? part(shelfPartId(id), "shelf", "interior", box)
+        : part(dividerPartId(id), "divider", "interior", box),
     );
+  }
+
+  // Doors and drawers last; see attachments/layout.ts for the front conventions.
+  const openings = new Map(layouts.map((layout) => [layout.id, layout.bounds]));
+  for (const spec of buildAttachmentParts(configuration, openings)) {
+    parts.push({ ...spec, materialId: resolvePartMaterial(materials, spec.materialSlot) });
   }
 
   return parts;
 }
 
-/** Overall bounding box of the furniture, for camera framing. */
-export function getFurnitureBounds({ width, height, depth }: Pick<CabinetConfiguration, "width" | "height" | "depth">): BoxMm {
-  return { position: { x: 0, y: 0, z: 0 }, dimensions: { width, height, depth } };
+/** Compartments (including nested ones) whose opening is closed by an inset door. */
+function getInsetCoveredCompartments(
+  configuration: CabinetConfiguration,
+  layouts: readonly CompartmentLayout[],
+): Set<string> {
+  const insetDoors = new Set(
+    configuration.attachments
+      .filter((a) => a.type === "door" && a.configuration.mounting === "inset")
+      .map((a) => a.compartmentId),
+  );
+  const covered = new Set<string>();
+  // Layouts are in pre-order, so a parent is always classified before its children.
+  for (const { id, parentId } of layouts) {
+    if (insetDoors.has(id) || (parentId !== null && covered.has(parentId))) covered.add(id);
+  }
+  return covered;
+}
+
+/**
+ * Overall bounding box of the furniture, for camera framing. The carcass spans z ∈ [0, depth]
+ * and faces +Z; overlay fronts stand out of it by `frontProjection`.
+ */
+export function getFurnitureBounds(
+  { width, height, depth }: Pick<CabinetConfiguration, "width" | "height" | "depth">,
+  frontProjection = 0,
+): BoxMm {
+  return { position: { x: 0, y: 0, z: 0 }, dimensions: { width, height, depth: depth + frontProjection } };
 }

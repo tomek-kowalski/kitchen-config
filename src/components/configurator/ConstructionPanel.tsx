@@ -19,7 +19,9 @@ function ComponentToggle({ id, label, description, checked, onChange, source, ch
   const rejection = useConfiguratorStore((state) => (state.rejection?.source === source ? state.rejection : null));
 
   return (
-    <div className="space-y-4 rounded-lg border border-stone-200 p-3">
+    <div
+      className={`space-y-4 rounded-lg border-2 p-3 transition-colors ${checked ? "border-blue-600 bg-blue-50/40" : "border-stone-200"}`}
+    >
       <label htmlFor={id} className="flex cursor-pointer items-start justify-between gap-4">
         <span>
           <span className="block text-sm font-medium text-stone-800">{label}</span>
@@ -31,7 +33,7 @@ function ComponentToggle({ id, label, description, checked, onChange, source, ch
           role="switch"
           checked={checked}
           onChange={(event) => onChange(event.target.checked)}
-          className="mt-0.5 size-5 shrink-0 cursor-pointer accent-stone-900"
+          className="mt-0.5 size-5 shrink-0 cursor-pointer accent-blue-600 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-stone-900"
         />
       </label>
       {checked && children}

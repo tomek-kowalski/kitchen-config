@@ -3,6 +3,7 @@
 import { useRef, useState } from "react";
 import { exportCabinetJson, importCabinetJson, type CabinetImportIssue } from "@/domain/serialization/cabinetJson";
 import { useConfiguratorStore } from "@/store/useConfiguratorStore";
+import { usePreviewStore } from "@/store/usePreviewStore";
 import { ErrorList, SectionHeading } from "./SectionHeading";
 
 const MAX_FILE_BYTES = 1_000_000;
@@ -38,6 +39,7 @@ export function ConfigurationFilePanel() {
     }
     // Replacement is all-or-nothing: on failure the current configuration stays untouched.
     const commit = useConfiguratorStore.getState().replaceConfiguration(result.configuration);
+    if (commit.ok) usePreviewStore.getState().closeAll();
     setStatus(
       commit.ok
         ? {

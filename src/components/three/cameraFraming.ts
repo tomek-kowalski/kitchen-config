@@ -8,13 +8,20 @@ export const DEFAULT_VIEW_DIRECTION = new Vector3(0.55, 0.35, 1).normalize();
 const FIT_MARGIN = 1.08;
 
 /**
- * Scene-space box (meters) of furniture rendered centered on the floor origin,
- * matching the offset applied by FurnitureRenderer.
+ * Scene-space box (meters) of the furniture. FurnitureRenderer centres the carcass on the floor
+ * origin (offset −width/2, −carcassDepth/2); the front faces +Z, so overlay fronts extend the box there.
  */
-export function furnitureSceneBox({ dimensions }: BoxMm): Box3 {
-  const width = mmToM(dimensions.width);
-  const depth = mmToM(dimensions.depth);
-  return new Box3(new Vector3(-width / 2, 0, -depth / 2), new Vector3(width / 2, mmToM(dimensions.height), depth / 2));
+export function furnitureSceneBox({ position, dimensions }: BoxMm, carcassDepth: number): Box3 {
+  const offsetX = dimensions.width / 2;
+  const offsetZ = carcassDepth / 2;
+  return new Box3(
+    new Vector3(mmToM(position.x - offsetX), mmToM(position.y), mmToM(position.z - offsetZ)),
+    new Vector3(
+      mmToM(position.x + dimensions.width - offsetX),
+      mmToM(position.y + dimensions.height),
+      mmToM(position.z + dimensions.depth - offsetZ),
+    ),
+  );
 }
 
 /** Camera position and orbit target that fit the whole box for the given aspect ratio and direction. */

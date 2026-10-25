@@ -1,6 +1,7 @@
+import { validateAttachments } from "../attachments/validateAttachments";
 import { calculateCompartmentBounds } from "../compartments/layout";
 import { isValidSplitRatio } from "../compartments/tree";
-import type { CompartmentId } from "../compartments/types";
+import type { CompartmentId, CompartmentLayout } from "../compartments/types";
 import { CABINET_LIMITS, CONSTRUCTION_LIMITS } from "../furniture/defaults";
 import { formatMm, pluralPl } from "../furniture/format";
 import { isMaterialId, MATERIAL_SLOTS, type MaterialSlot } from "../furniture/materials";
@@ -13,7 +14,7 @@ import type {
   NumericField,
 } from "../furniture/types";
 
-export type CabinetValidationField = NumericField | `materials.${MaterialSlot}` | "compartments";
+export type CabinetValidationField = NumericField | `materials.${MaterialSlot}` | "compartments" | "attachments";
 
 export type CabinetValidationCode =
   | "not_finite"
@@ -30,7 +31,24 @@ export type CabinetValidationCode =
   | "max_depth_exceeded"
   | "max_leaves_exceeded"
   | "compartment_too_narrow"
-  | "compartment_too_low";
+  | "compartment_too_low"
+  | "invalid_attachment"
+  | "duplicate_attachment_id"
+  | "attachment_compartment_not_found"
+  | "attachment_not_on_leaf"
+  | "attachment_conflict"
+  | "attachment_gap_out_of_range"
+  | "door_too_narrow"
+  | "door_too_low"
+  | "invalid_drawer_count"
+  | "drawer_depth_out_of_range"
+  | "drawer_front_too_low"
+  | "drawer_box_too_small"
+  | "removal_requires_confirmation"
+  | "interior_drawer_without_door"
+  | "invalid_drawer_heights"
+  | "invalid_handle"
+  | "handle_out_of_bounds";
 
 export interface CabinetValidationError {
   readonly field: CabinetValidationField;
@@ -38,6 +56,8 @@ export interface CabinetValidationError {
   readonly message: string;
   /** The compartment the error refers to, for structure errors. */
   readonly compartmentId?: CompartmentId;
+  /** The door or drawer assembly the error refers to. */
+  readonly attachmentId?: string;
 }
 
 export interface CabinetValidationResult {
@@ -63,6 +83,8 @@ const MATERIAL_SLOT_LABELS: Readonly<Record<MaterialSlot, string>> = {
   interior: "wnętrza",
   backPanel: "pleców",
   plinth: "cokołu",
+  doorFront: "frontów drzwi",
+  drawerFront: "frontów szuflad",
 };
 
 function validateRange(field: NumericField, value: number, { min, max }: DimensionRange): CabinetValidationError | null {
@@ -160,11 +182,11 @@ function validateCompartmentTree(root: unknown, limits: ConstructionLimits): Cab
 
 /** Every compartment created by a split must stay above the minimum size. */
 function validateCompartmentSizes(
-  configuration: CabinetConfiguration,
+  layouts: readonly CompartmentLayout[],
   limits: ConstructionLimits,
 ): CabinetValidationError[] {
   const errors: CabinetValidationError[] = [];
-  for (const { id, isLeaf, level, bounds } of calculateCompartmentBounds(configuration)) {
+  for (const { id, isLeaf, level, bounds } of layouts) {
     if (!isLeaf || level === 0) continue;
     const { width, height } = bounds.dimensions;
     if (width < limits.minCompartmentWidth) {
@@ -250,7 +272,12 @@ export function validateCabinet(
   const structureErrors = validateCompartmentTree(configuration.compartments, construction);
   errors.push(...structureErrors);
   // Sizes are derived from the dimensions and the tree, so they are only meaningful when both are sound.
-  if (errors.length === 0) errors.push(...validateCompartmentSizes(configuration, construction));
+  if (errors.length === 0) {
+    const layouts = calculateCompartmentBounds(configuration);
+    errors.push(...validateCompartmentSizes(layouts, construction));
+    // Doors and drawers are sized from the compartments, so they are checked once those are valid.
+    if (errors.length === 0) errors.push(...validateAttachments(configuration, layouts));
+  }
 
   return { isValid: errors.length === 0, errors };
 }

@@ -16,6 +16,8 @@ export const DEFAULT_MATERIALS: FurnitureMaterials = Object.freeze({
   interior: DEFAULT_MATERIAL_ID,
   backPanel: DEFAULT_MATERIAL_ID,
   plinth: DEFAULT_MATERIAL_ID,
+  doorFront: DEFAULT_MATERIAL_ID,
+  drawerFront: DEFAULT_MATERIAL_ID,
 });
 
 export const ROOT_COMPARTMENT_ID = "root";
@@ -35,6 +37,7 @@ export const DEFAULT_CABINET: CabinetConfiguration = Object.freeze({
   backPanel: DEFAULT_BACK_PANEL,
   plinth: DEFAULT_PLINTH,
   compartments: DEFAULT_COMPARTMENTS,
+  attachments: Object.freeze([]),
 });
 
 /** Prototype limits for Phase 1 — not final manufacturing specifications. */

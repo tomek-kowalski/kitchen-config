@@ -28,6 +28,8 @@ describe("useConfiguratorStore materials", () => {
       interior: "natural-oak",
       backPanel: "light-grey",
       plinth: "black-matte",
+      doorFront: "natural-oak",
+      drawerFront: "natural-oak",
     });
   });
 

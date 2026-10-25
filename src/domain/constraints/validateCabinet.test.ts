@@ -94,12 +94,14 @@ describe("validateCabinet", () => {
       "materials.interior",
       "materials.backPanel",
       "materials.plinth",
+      "materials.doorFront",
+      "materials.drawerFront",
     ]);
   });
 
   it("accepts every catalog finish in every slot", () => {
     for (const id of MATERIAL_IDS) {
-      const materials = { body: id, interior: id, backPanel: id, plinth: id };
+      const materials = { body: id, interior: id, backPanel: id, plinth: id, doorFront: id, drawerFront: id };
       expect(validateCabinet({ ...DEFAULT_CABINET, materials }).isValid).toBe(true);
     }
   });

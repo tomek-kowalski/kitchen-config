@@ -9,12 +9,21 @@ import {
   type CabinetImportResult,
 } from "./cabinetJson";
 
+const NO_HANDLE = { type: "none", finish: "brushed-steel", align: "center", edgeOffset: 40, alignOffset: 100 } as const;
+
 const CUSTOM: CabinetConfiguration = {
   width: 1200,
   height: 2000,
   depth: 450,
   panelThickness: 22,
-  materials: { body: "anthracite", interior: "white-matte", backPanel: "light-grey", plinth: "black-matte" },
+  materials: {
+    body: "anthracite",
+    interior: "white-matte",
+    backPanel: "light-grey",
+    plinth: "black-matte",
+    doorFront: "walnut",
+    drawerFront: "cashmere",
+  },
   backPanel: { enabled: true, thickness: 6 },
   plinth: { enabled: true, height: 100, setback: 40 },
   compartments: {
@@ -22,6 +31,20 @@ const CUSTOM: CabinetConfiguration = {
     split: { direction: "horizontal", ratio: 0.4 },
     children: [{ id: "c1" }, { id: "c2", split: { direction: "vertical", ratio: 0.5 }, children: [{ id: "c3" }, { id: "c4" }] }],
   },
+  attachments: [
+    {
+      id: "a1",
+      type: "door",
+      compartmentId: "c1",
+      configuration: { layout: "double", mounting: "overlay", hinge: "left", gap: 2, centerGap: 3, maxOpenAngle: 100, handle: NO_HANDLE },
+    },
+    {
+      id: "a2",
+      type: "drawer",
+      compartmentId: "c3",
+      configuration: { count: 3, placement: "exterior", mounting: "inset", frontGap: 3, depth: 350, heightRatios: null, handle: NO_HANDLE },
+    },
+  ],
 };
 
 function expectOk(result: CabinetImportResult): CabinetConfiguration {
@@ -51,7 +74,14 @@ describe("exportCabinetJson / importCabinetJson", () => {
         height: 2000,
         depth: 450,
         panelThickness: 22,
-        materials: { body: "anthracite", interior: "white-matte", backPanel: "light-grey", plinth: "black-matte" },
+        materials: {
+          body: "anthracite",
+          interior: "white-matte",
+          backPanel: "light-grey",
+          plinth: "black-matte",
+          doorFront: "walnut",
+          drawerFront: "cashmere",
+        },
         backPanel: { enabled: true, thickness: 6 },
         plinth: { enabled: true, height: 100, setback: 40 },
         compartments: {
@@ -62,6 +92,20 @@ describe("exportCabinetJson / importCabinetJson", () => {
             { id: "c2", split: { direction: "vertical", ratio: 0.5 }, children: [{ id: "c3" }, { id: "c4" }] },
           ],
         },
+        attachments: [
+          {
+            id: "a1",
+            type: "door",
+            compartmentId: "c1",
+            configuration: { layout: "double", mounting: "overlay", hinge: "left", gap: 2, centerGap: 3, maxOpenAngle: 100, handle: NO_HANDLE },
+          },
+          {
+            id: "a2",
+            type: "drawer",
+            compartmentId: "c3",
+            configuration: { count: 3, placement: "exterior", mounting: "inset", frontGap: 3, depth: 350, heightRatios: null, handle: NO_HANDLE },
+          },
+        ],
       },
     });
     expect(exportCabinetJson(CUSTOM)).not.toMatch(/#[0-9a-f]{6}/i);
@@ -132,7 +176,15 @@ describe("migration of Phase 1 configurations", () => {
 
   it("accepts an explicit schemaVersion 1 and a current catalog ID", () => {
     const migrated = expectOk(parseCabinetDocument({ ...PHASE_1, schemaVersion: 1, materialId: "walnut" }));
-    expect(migrated.materials).toEqual({ body: "walnut", interior: "walnut", backPanel: "walnut", plinth: "walnut" });
+    // v1 → v2 applies the single material to the four v2 slots; v3 → v4 adds the oak front slots.
+    expect(migrated.materials).toEqual({
+      body: "walnut",
+      interior: "walnut",
+      backPanel: "walnut",
+      plinth: "walnut",
+      doorFront: "natural-oak",
+      drawerFront: "natural-oak",
+    });
   });
 
   it("does not silently accept unknown legacy material IDs", () => {
@@ -223,7 +275,7 @@ describe("schema v3: structure and optional components", () => {
   });
 
   it("rejects unsupported schema versions", () => {
-    for (const schemaVersion of [0, 4, "3", null]) {
+    for (const schemaVersion of [0, 6, "3", "4", "5", null]) {
       expect(issuePaths(parseCabinetDocument({ schemaVersion, cabinet: {} }))).toEqual(["schemaVersion"]);
     }
   });
@@ -245,17 +297,19 @@ describe("migration of schema v2 documents", () => {
     const result = parseCabinetDocument(V2);
     expect(expectOk(result)).toEqual({
       ...V2.cabinet,
+      materials: { ...V2.cabinet.materials, doorFront: "natural-oak", drawerFront: "natural-oak" },
       backPanel: { enabled: false, thickness: 8 },
       plinth: { enabled: false, height: 80, setback: 30 },
       compartments: { id: "root" },
+      attachments: [],
     });
     expect(result.ok && result.migratedFrom).toBe(2);
   });
 
-  it("re-exports migrated documents as schema v3 with the same values", () => {
+  it("re-exports migrated documents as the current schema with the same values", () => {
     const migrated = expectOk(parseCabinetDocument(V2));
     expect(expectOk(importCabinetJson(exportCabinetJson(migrated)))).toEqual(migrated);
-    expect(JSON.parse(exportCabinetJson(migrated)).schemaVersion).toBe(3);
+    expect(JSON.parse(exportCabinetJson(migrated)).schemaVersion).toBe(CABINET_SCHEMA_VERSION);
   });
 
   it("still rejects unknown materials in v2 documents", () => {

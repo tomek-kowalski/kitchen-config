@@ -6,14 +6,19 @@ import { getNumericField, getNumericFieldRange } from "@/domain/furniture/fields
 import type { DimensionRange, NumericField } from "@/domain/furniture/types";
 import { useConfiguratorStore } from "@/store/useConfiguratorStore";
 
-interface DimensionFieldProps {
-  field: NumericField;
+interface DimensionFieldProps<F extends string> {
+  /** Identifies the value; also used to derive the input id. */
+  field: F;
   label: string;
   value: number;
   range: DimensionRange;
   sliderStep: number;
   errors: readonly CabinetValidationError[];
-  onChange: (field: NumericField, value: number) => void;
+  onChange: (field: F, value: number) => void;
+  /** Slider step; integers only when 1. */
+  inputStep?: number;
+  /** Unit shown after the value and the range; millimeters by default. */
+  unit?: string;
 }
 
 const NO_ERRORS: readonly CabinetValidationError[] = [];
@@ -26,8 +31,18 @@ function formatMillimeters(value: number): string {
   return Number.isFinite(value) ? String(value) : "";
 }
 
-export function DimensionField({ field, label, value, range, sliderStep, errors, onChange }: DimensionFieldProps) {
-  const inputId = `dimension-${field.replace(".", "-")}`;
+export function DimensionField<F extends string>({
+  field,
+  label,
+  value,
+  range,
+  sliderStep,
+  errors,
+  onChange,
+  inputStep = 1,
+  unit = "mm",
+}: DimensionFieldProps<F>) {
+  const inputId = `dimension-${field.replaceAll(".", "-")}`;
   const hintId = `${inputId}-hint`;
   const errorId = `${inputId}-error`;
   const invalid = errors.length > 0;
@@ -51,7 +66,7 @@ export function DimensionField({ field, label, value, range, sliderStep, errors,
           {label}
         </label>
         <span id={hintId} className="text-xs tabular-nums text-stone-500">
-          {range.min}–{range.max} mm
+          {range.min}–{range.max} {unit}
         </span>
       </div>
 
@@ -68,7 +83,7 @@ export function DimensionField({ field, label, value, range, sliderStep, errors,
           inputMode="decimal"
           min={range.min}
           max={range.max}
-          step={1}
+          step={inputStep}
           value={text}
           onChange={(event) => {
             setText(event.target.value);
@@ -79,7 +94,7 @@ export function DimensionField({ field, label, value, range, sliderStep, errors,
           className="w-full min-w-0 bg-transparent px-3 py-2 text-base tabular-nums text-stone-900 outline-none [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
         />
         <span className="select-none pr-3 text-sm text-stone-500" aria-hidden="true">
-          mm
+          {unit}
         </span>
       </div>
 
