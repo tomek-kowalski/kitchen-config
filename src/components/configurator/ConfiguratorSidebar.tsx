@@ -74,7 +74,8 @@ export function ConfiguratorSidebar() {
   };
 
   return (
-    <aside className="flex w-full flex-col border-t border-stone-200 bg-white lg:h-full lg:w-[380px] lg:shrink-0 lg:border-l lg:border-t-0">
+    // Mobile: anything scrolled into view (focus, keyboard navigation) stops below the pinned 3D viewer.
+    <aside className="flex w-full flex-col border-t border-stone-200 bg-white [&_*]:scroll-mt-[calc(max(45svh,16rem)+1rem)] lg:h-full lg:w-[380px] lg:shrink-0 lg:border-l lg:border-t-0 lg:[&_*]:scroll-mt-0">
       <header className="border-b border-stone-200 px-6 py-5">
         <p className="text-xs font-medium uppercase tracking-[0.12em] text-stone-500">Konfigurator</p>
         <h1 className="mt-1 text-xl font-semibold tracking-tight text-stone-900">Szafka modułowa</h1>

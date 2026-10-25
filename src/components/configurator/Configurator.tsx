@@ -38,10 +38,14 @@ export function Configurator() {
     // min-height, the flexed height is not definite and the viewer's `h-full` collapses to `auto`.
     // On desktop the root is exactly one viewport tall; the sidebar scrolls on its own.
     <div className="flex min-h-dvh flex-col bg-[#ecebe8] font-sans text-stone-900 lg:h-dvh lg:flex-row lg:overflow-hidden">
-      {/* min-w-0 lets the viewer shrink below the canvas' current pixel width when the window narrows. */}
+      {/*
+        Mobile: the viewer stays pinned to the top while the page (the controls) scrolls below it,
+        so every change is visible immediately. Desktop: it fills the left column as before.
+        min-w-0 lets the viewer shrink below the canvas' current pixel width when the window narrows.
+      */}
       <section
         aria-label="Podgląd 3D"
-        className="relative h-[55svh] min-h-80 w-full shrink-0 overflow-hidden lg:h-full lg:min-h-0 lg:min-w-0 lg:flex-1 lg:shrink"
+        className="sticky top-0 z-20 h-[45svh] min-h-64 w-full shrink-0 overflow-hidden shadow-md lg:relative lg:z-auto lg:h-full lg:min-h-0 lg:min-w-0 lg:flex-1 lg:shrink lg:shadow-none"
       >
         <FurnitureCanvas />
         <ViewControls />
